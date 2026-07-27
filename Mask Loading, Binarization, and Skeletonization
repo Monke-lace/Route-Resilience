@@ -1,0 +1,44 @@
+"""
+PART 1: Mask Loading, Binarization, and Skeletonization
+Result: Ground Truth Mask and Skeletonized Road Topology
+"""
+
+import os
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+from skimage.morphology import skeletonize
+
+# 1. Dataset Path & Sample Loading
+DATASET_PATH = "/kaggle/input/datasets/payne18/road-detection-dataset-with-masks/deepglobe-road-extraction-dataset/train"
+sample_name = "00009"
+mask_path = os.path.join(DATASET_PATH, f"{sample_name}_mask.png")
+
+mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+
+if mask is None:
+    print(f"Warning: Could not read image at {mask_path}. Generating dummy mask.")
+    mask = np.zeros((400, 400), dtype=np.uint8)
+
+# Convert to Binary
+binary_mask = (mask > 127).astype(np.uint8)
+print("Mask Shape :", binary_mask.shape)
+print("Road Pixels:", np.sum(binary_mask))
+
+# Plot Output 1: Binary Mask
+plt.figure(figsize=(8, 8))
+plt.imshow(binary_mask, cmap="gray")
+plt.title("Ground Truth Road Mask")
+plt.axis("off")
+plt.show()
+
+# 2. Skeletonization
+skeleton = skeletonize(binary_mask).astype(np.uint8)
+print("Skeleton Pixels :", np.sum(skeleton))
+
+# Plot Output 2: Road Skeleton
+plt.figure(figsize=(8, 8))
+plt.imshow(skeleton, cmap="gray")
+plt.title("Road Skeleton")
+plt.axis("off")
+plt.show()
