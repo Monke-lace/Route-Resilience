@@ -1,0 +1,75 @@
+"""
+PART 3: Dynamic Weight Computation (via Distance Transform) & Criticality Heatmap
+Result: Node Criticality Heatmap Overlay
+"""
+
+import cv2
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+
+# 1. Compute Base Centralities
+degree_centrality = nx.degree_centrality(G)
+betweenness_centrality = nx.betweenness_centrality(G, weight="weight", normalized=True)
+eigenvector_centrality = nx.eigenvector_centrality_numpy(G, weight="weight")
+
+# 2. Extract Mask-Derived Dynamic Weights (Distance Transform / Road Thickness)
+dist_transform = cv2.distanceTransform(binary_mask, cv2.DIST_L2, 5)
+
+node_widths = {}
+for node_id, (x, y) in node_positions.items():
+    x_c = np.clip(x, 0, binary_mask.shape[1] - 1)
+    y_c = np.clip(y, 0, binary_mask.shape[0] - 1)
+    node_widths[node_id] = dist_transform[y_c, x_c]
+
+max_width = max(node_widths.values()) if max(node_widths.values()) > 0 else 1.0
+
+# 3. Dynamic Node Criticality Calculation
+node_criticality = {}
+for node in G.nodes():
+    # Width factor normalized from 0.0 to 1.0 based on local road thickness
+    w_factor = node_widths[node] / max_width
+
+    # Dynamic Weighting Rules:
+    # Wider roads -> Higher Hub Capacity (WD, WE)
+    # Narrower roads -> Higher Bottleneck Chokepoint (WB)
+    WD_dynamic = 0.15 + (0.25 * w_factor)  # Range: [0.15, 0.40]
+    WB_dynamic = 0.70 - (0.40 * w_factor)  # Range: [0.30, 0.70]
+    WE_dynamic = 0.15 + (0.15 * w_factor)  # Range: [0.15, 0.30]
+
+    nc = (
+        WD_dynamic * degree_centrality[node]
+        + WB_dynamic * betweenness_centrality[node]
+        + WE_dynamic * eigenvector_centrality[node]
+    )
+    node_criticality[node] = nc
+
+print("=== DYNAMIC NODE CRITICALITY SCORES ===")
+for node, score in sorted(node_criticality.items(), key=lambda x: x[1], reverse=True):
+    print(f"Node {node} (Road Thickness: {node_widths[node]:.1f}px) -> Criticality: {score:.4f}")
+
+# 4. Generate Gaussian Heatmap
+sigma = 20
+heatmap = np.zeros(skeleton.shape, dtype=np.float32)
+Y, X = np.indices(skeleton.shape)
+
+for node, nc in node_criticality.items():
+    x, y = node_positions[node]
+    distance_squared = (X - x) ** 2 + (Y - y) ** 2
+    gaussian = (nc / (sigma * np.sqrt(2 * np.pi))) * np.exp(-distance_squared / (2 * sigma**2))
+    heatmap += gaussian
+
+# Normalize Heatmap
+heatmap = heatmap - heatmap.min()
+if heatmap.max() > 0:
+    heatmap = heatmap / heatmap.max()
+
+# Plot Output 3: Heatmap Overlay
+plt.figure(figsize=(10, 10))
+plt.imshow(binary_mask, cmap="gray")
+plt.imshow(heatmap, cmap="jet", alpha=0.6)
+plt.colorbar(label="Criticality (Mask-Weighted)")
+plt.title("Node Criticality Heatmap (Dynamic Road-Width Weights)")
+plt.axis("off")
+plt.show()
+
